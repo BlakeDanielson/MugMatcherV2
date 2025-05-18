@@ -12,6 +12,7 @@
 - [ ] User authentication and access control
 - [ ] Search and filtering functionality
 - [ ] Reporting and export features
+- [ ] Script to determine 'Display Crime' using AI
 - [ ] Engaging UI with improved visual design
 - [ ] Interactive elements like animations and transitions
 - [ ] Gamification features (scores, levels, achievements)
@@ -26,6 +27,8 @@
 
 ## Current Focus
 - [x] Initial project setup
+- [x] Data Processing Scripts
+  - [x] Develop `mugshot_exciting_crime_processor.py` to select the most engaging crime for display.
 - [ ] UI redesign for improved user engagement
   - [ ] Define visual design system
   - [x] Implement drag-and-drop interaction for matching (replaces dropdowns)
@@ -37,3 +40,4 @@
 - [x] Initial project setup
 - [x] Basic game functionality implementation (dropdown selection)
 - [x] Replaced dropdown selection with drag-and-drop interaction using dnd-kit
+- [x] Resolve CSV loading error

@@ -1,0 +1,80 @@
+services:
+  - type: web
+    name: mugshot-matcher
+    env: node
+    plan: starter
+    buildCommand: |
+      # Pre-build directory verification
+      echo "Verifying directories..."
+      
+      # The CSV file is now included in the GitHub repository in the data directory
+      # No need to download or transfer it separately
+      
+      # Install dependencies
+      echo "Installing dependencies..."
+      npm install
+      
+      # Validate CSV content
+      echo "Validating CSV files..."
+      node scripts/validate-data.js
+      if [ $? -ne 0 ]; then
+        echo "Warning: CSV validation failed. Build will continue, but some features may not work correctly."
+      fi
+      
+      # Build application
+      echo "Building application..."
+      npm run build
+    startCommand: npm start
+    healthCheckPath: /api/inmates
+    healthCheckTimeout: 60
+    healthCheck:
+      - path: /api/inmates
+        interval: 30s
+        timeout: 10s
+        grace_period: 60s
+      # Health check for the CSV file (now included in the repository)
+      - path: ./data/sorted_mugshots.csv
+        type: file_check
+        interval: 60s
+      - path: /opt/render/project/src
+        type: disk_check
+        threshold_percent: 90
+    envVars:
+      # Path to the CSV file (now included in the repository)
+      - key: MUGSHOTS_CSV_PATH
+        value: ./data/sorted_mugshots.csv
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_VERBOSE_LOGGING
+        value: "true"
+      - key: RENDER_ENVIRONMENT
+        value: "true"
+    
+    # Static file handling for Next.js
+    staticPublishPath: .next/static
+    routes:
+      - type: rewrite
+        source: /_next/static/*
+        destination: /static/*
+      - type: rewrite
+        source: /api/*
+        destination: /api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    # Note: We no longer use a mounted disk since the CSV file is now downloaded during build
+    # and stored in the project directory
+
+    # Logging configuration
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "5"
+        compress: "true"
+      destination:
+        type: papertrail
+        retention: 7d
+        verbosity: info

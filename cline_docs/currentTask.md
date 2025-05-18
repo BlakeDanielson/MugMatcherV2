@@ -1,30 +1,21 @@
-# Current Task
+## Current Objective: Develop `mugshot_exciting_crime_processor.py`
 
-## Previous Task: Project Initialization
-- [x] Create project structure
-- [x] Initialize Git repository
-- [x] Push to GitHub
-- [x] Implement basic game functionality
+**Context:**
+The user has requested a new Python script, `mugshot_exciting_crime_processor.py`, to enhance the data processing pipeline. This script will take the output from `mugshot_ai_processor.py` (specifically the "AI_Description_Explanation" column), and use AI to determine the single "most exciting" crime from potentially multiple charges. This "most exciting" crime will be saved in a new "Display_Crime" column in a new output CSV.
 
-## Current Focus: UI Redesign & Bug Fixes
-- [ ] Define a more engaging and fun UI aesthetic for the Mugshot Matcher application
-  - [ ] Create a cohesive color scheme that's visually appealing and matches the detective/law enforcement theme
-  - [ ] Design a more attractive game board layout
-  - [x] Add visual cues and feedback for correct/incorrect matches (Implemented with drag/drop results)
-- [x] Implement interactive elements
-  - [x] Replaced dropdowns with drag-and-drop using dnd-kit
-  - [ ] Add animations for card flips, transitions between states
-  - [x] Improve feedback mechanisms for user actions (Drag/drop visual cues)
-  - [ ] Create satisfying visual/audio feedback for correct/incorrect answers
-- [ ] Enhance gamification aspects
-  - [x] Add scoring system with levels/badges (Points system implemented)
-  - [x] Implement progress tracking (High score tracking implemented)
-  - [ ] Create a timer option for added challenge
-- [x] Fix bug preventing dropping inmate onto their own crime description
+This task takes precedence over the previously planned "Define Visual Design System."
 
-## Next Steps
-- [ ] Manually test the drag-and-drop functionality, specifically the fix allowing drops onto the correct crime description.
-- [ ] Create mockups for further UI redesign (if desired).
-- [ ] Implement further UI enhancements (e.g., animations, refined styling).
-- [ ] Add animations and transitions using CSS/Framer Motion.
-- [ ] Optimize for mobile and desktop experiences.
+**Previous Actions:**
+1.  Successfully read `projectRoadmap.md`, `currentTask.md`, `techStack.md`, and `codebaseSummary.md`.
+2.  Created the initial version of `mug-matcher/mugshotscripts/mugshot_exciting_crime_processor.py` based on `mugshot_ai_processor.py` and the user's requirements.
+
+**Next Steps:**
+1.  Update `cline_docs/projectRoadmap.md` to include this new script development task.
+2.  Update `cline_docs/codebaseSummary.md` to reflect the addition of the new script and its role.
+3.  Test the `mugshot_exciting_crime_processor.py` script. This will likely involve:
+    *   Ensuring a sample input CSV (e.g., `mugshot_ai_v1.csv`) is available.
+    *   Running the script: `python mug-matcher/mugshotscripts/mugshot_exciting_crime_processor.py --input mugshot_ai_v1.csv --output mugshot_display_crimes.csv`
+    *   Reviewing the output CSV (`mugshot_display_crimes.csv`) for correctness.
+    *   Checking logs for any errors or warnings.
+4.  Refine `mugshot_exciting_crime_processor.py` based on testing, particularly the AI prompting and fallback logic for selecting the "most exciting" crime.
+5.  Inform the user about the script's completion and provide instructions on how to run it.

@@ -12,7 +12,9 @@
   - `lib/` - Utility functions and data handling
     - `csv-database.ts` - Functions for handling CSV data
   - `mugshotscripts/` - Scripts for processing mugshot data
-    - Contains database schema and scripts for data processing
+    - `mugshot_ai_processor.py` - Processes raw mugshot descriptions to generate plain English explanations for charges using AI. Produces `mugshot_ai_v1.csv` (default name).
+    - `mugshot_exciting_crime_processor.py` - Takes the output of `mugshot_ai_processor.py` (specifically the "AI_Description_Explanation" column) and uses AI to select the single "most exciting" or dramatic crime to feature. Outputs a new CSV (e.g., `mugshot_display_crimes.csv`) with an added "Display_Crime" column.
+    - Other scripts like `scrape.py` for data acquisition and `sort_mugshots.py` for data organization.
 
 ## Data Flow
 1. User lands on the main page
@@ -34,6 +36,7 @@
 - Repository initialization
 - Implementing basic game functionality (dropdown selection)
 - Replaced dropdown selection with drag-and-drop interaction using dnd-kit in `mugshot-matching-game.tsx`.
+- Developed `mugshot_exciting_crime_processor.py` to enhance data by selecting a "Display Crime" using AI.
 
 ## User Feedback Integration
 - The application provides visual feedback on match correctness via drag-and-drop interactions.
