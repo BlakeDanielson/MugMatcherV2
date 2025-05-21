@@ -120,7 +120,7 @@ def reword_single_charge(charge_text):
 
     messages = [
         {"role": "system", "content": "You are a helpful assistant that rewrites legal charge descriptions into plain, concise English suitable for an average person to understand. Aim for clarity and brevity, ideally under 15 words. Return only the rephrased charge description. For example, 'UTTERING FORGED INSTRUMENT' could be 'Using a fake document'. 'FAILURE TO APPEAR - MISDEMEANOR' could be 'Missed court for a minor offense'."},
-        {"role": "user", "content": f"Rewrite this charge description in plain English: \\"{charge_text}\\""}
+        {"role": "user", "content": f"Rewrite this charge description in plain English: \"{{{charge_text}}}\""}
     ]
     
     return call_openai_api(messages, max_tokens=60, temperature=0.1)
