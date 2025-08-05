@@ -3,11 +3,19 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { CheckCircle2, XCircle, ArrowRightLeft, RefreshCw, AlertCircle, Trophy } from "lucide-react"
+import { CheckCircle2, XCircle, ArrowRightLeft, RefreshCw, AlertCircle, Trophy, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 // Remove Select imports as it's being replaced
 // import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+// Add Dialog imports for modal functionality
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 // Removed DndContext and related imports
 import {
   PointsManager,
@@ -46,6 +54,9 @@ export default function MugshotMatchingGame() {
   // Removed activeDragId state
   const [selectedMugshotId, setSelectedMugshotId] = useState<string | null>(null) // State for selected mugshot
   const [selectedDescriptionId, setSelectedDescriptionId] = useState<string | null>(null) // State for selected description
+  // Add modal state for mugshot details
+  const [selectedMugshotForModal, setSelectedMugshotForModal] = useState<Inmate | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false)
 
   // Points system state
   const [currentPoints, setCurrentPoints] = useState<number>(0)
@@ -296,6 +307,13 @@ export default function MugshotMatchingGame() {
     return inmates.find((inmate) => inmate.id === numericId);
   }
 
+  // Function to handle showing mugshot details in modal
+  const handleMugshotInfo = (mugshot: Inmate, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent triggering the selection
+    setSelectedMugshotForModal(mugshot);
+    setIsModalOpen(true);
+  };
+
   // If loading, show a loading state
   if (loading) {
     return (
@@ -358,10 +376,26 @@ export default function MugshotMatchingGame() {
             src={mugshot.image || "/placeholder.svg"}
             alt={`Mugshot ${index + 1}`}
             className="w-full h-full object-cover"
+            onError={(e) => {
+              // Handle image loading errors - common source of mobile display issues
+              const target = e.target as HTMLImageElement;
+              if (target.src !== "/placeholder.svg") {
+                target.src = "/placeholder.svg";
+              }
+            }}
           />
           <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-1 rounded-md text-sm backdrop-blur-sm shadow-sm">
             {mugshot.name}
           </div>
+          
+          {/* Info button for modal */}
+          <button
+            onClick={(e) => handleMugshotInfo(mugshot, e)}
+            className="absolute top-2 right-2 bg-blue-600/80 hover:bg-blue-600 text-white p-1.5 rounded-md text-sm backdrop-blur-sm shadow-sm transition-colors"
+            title="View details"
+          >
+            <Info className="h-3 w-3" />
+          </button>
 
           {results?.submitted && (
             <div
@@ -571,6 +605,70 @@ export default function MugshotMatchingGame() {
           )}
         </div>
       </Card>
+
+      {/* Mugshot Details Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-md w-full mx-4 bg-gray-800 border-gray-700">
+          <DialogHeader>
+            <DialogTitle className="text-gray-200">
+              {selectedMugshotForModal?.name || "Inmate Details"}
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Detailed information about this mugshot
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedMugshotForModal && (
+            <div className="space-y-4">
+              {/* Mobile-optimized image display */}
+              <div className="flex justify-center">
+                <div className="relative w-48 h-48 rounded-lg overflow-hidden border-2 border-gray-600">
+                  <img
+                    src={selectedMugshotForModal.image || "/placeholder.svg"}
+                    alt={selectedMugshotForModal.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Handle image loading errors in modal - key for mobile debugging
+                      const target = e.target as HTMLImageElement;
+                      if (target.src !== "/placeholder.svg") {
+                        console.warn(`Failed to load image: ${selectedMugshotForModal.image}`);
+                        target.src = "/placeholder.svg";
+                      }
+                    }}
+                    style={{
+                      // Ensure proper image rendering on mobile
+                      maxWidth: '100%',
+                      height: 'auto',
+                      objectFit: 'cover'
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* Inmate Details */}
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-semibold text-gray-200 mb-1">Name</h4>
+                  <p className="text-gray-300">{selectedMugshotForModal.name}</p>
+                </div>
+                
+                <div>
+                  <h4 className="font-semibold text-gray-200 mb-1">Crime Description</h4>
+                  <p className="text-gray-300 text-sm leading-relaxed">
+                    {selectedMugshotForModal.crime || "No crime description available"}
+                  </p>
+                </div>
+                
+                {/* Debug info for troubleshooting mobile issues */}
+                <div className="text-xs text-gray-500 border-t border-gray-700 pt-2">
+                  <p>Image URL: {selectedMugshotForModal.image ? "Available" : "Missing"}</p>
+                  <p>ID: {selectedMugshotForModal.id}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
     // Removed closing DndContext tag
   )
