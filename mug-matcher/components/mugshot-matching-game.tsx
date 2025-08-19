@@ -1,231 +1,80 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { CheckCircle2, XCircle, ArrowRightLeft, RefreshCw, AlertCircle, Trophy, Info } from "lucide-react"
-import { cn } from "@/lib/utils"
-// Remove Select imports as it's being replaced
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useToast } from "@/hooks/use-toast"
-// Add Dialog imports for modal functionality
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-// Removed DndContext and related imports
-import {
-  PointsManager,
-  ScoreDisplay,
-  createMatchResult,
-  handleMatchComplete,
-  handleGameReset,
-  cleanupPointsSystem,
-  formatPoints
-} from "@/points"
+import React from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Badge } from "@/components/ui/badge"
+import { ArrowRightLeft } from "lucide-react"
+import { useIsMobile } from "@/hooks/use-mobile"
 
-// Define the inmate data type
-interface Inmate {
-  id: number
-  name: string
-  image: string
-  crime?: string
-}
+// Import modular game components and hooks
+import {
+  GameSkeleton,
+  GameError,
+  GameProgress,
+  GameResultsView,
+    GameStats,
+  CleanMugshotCard,
+  CleanCrimeCard,
+  CleanGameControls,
+  useGameLogic,
+  usePointsSystem,
+  submitGame,
+  type Inmate
+} from "@/components/game"
+
+import { MobileCrimeModal } from './game/mobile-crime-modal'
 
 export default function MugshotMatchingGame() {
-  const { toast } = useToast()
-  const [inmates, setInmates] = useState<Inmate[]>([])
-  const [shuffledMugshotImages, setShuffledMugshotImages] = useState<Inmate[]>([]) // Renamed from shuffledCrimes
-  const [shuffledCrimeDescriptions, setShuffledCrimeDescriptions] = useState<Inmate[]>([]) // Renamed from shuffledMugshots
-  const [matches, setMatches] = useState<Record<string, string | null>>({}) // Maps crimeDescriptionId (string) to mugshotImageId (string)
-  const [results, setResults] = useState<{
-    score: number
-    total: number
-    percentage: number
-    submitted: boolean
-    correctMatches: number[]
-    pointsEarned: number
-  } | null>(null)
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-  // Removed activeDragId state
-  const [selectedMugshotId, setSelectedMugshotId] = useState<string | null>(null) // State for selected mugshot
-  const [selectedDescriptionId, setSelectedDescriptionId] = useState<string | null>(null) // State for selected description
-  // Add modal state for mugshot details
-  const [selectedMugshotForModal, setSelectedMugshotForModal] = useState<Inmate | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false)
-
-  // Points system state
-  const [currentPoints, setCurrentPoints] = useState<number>(0)
-  const [highScore, setHighScore] = useState<number>(0)
-  const pointsManagerRef = useRef<PointsManager | null>(null)
-  const scoreDisplayRef = useRef<ScoreDisplay | null>(null)
+  const isMobile = useIsMobile()
   
-  // Game state tracking
-  const [attemptCounts, setAttemptCounts] = useState<Record<string, number>>({}) // Use string keys
-  const gameStartTimeRef = useRef<number>(Date.now())
+  // Use custom hooks for game logic and points system
+  const gameLogic = useGameLogic()
+  const pointsSystem = usePointsSystem()
 
-  // Fetch inmate data from the API
-  useEffect(() => {
-    const fetchInmates = async () => {
-      try {
-        setLoading(true)
-        const response = await fetch('/api/inmates')
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch inmates: ${response.status}`)
-        }
-        
-        const data = await response.json()
-        setInmates(data.inmates)
-        resetGame(data.inmates)
-        setError(null)
-      } catch (err) {
-        console.error('Error fetching inmate data:', err)
-        setError('Failed to load inmate data. Please try again later.')
-        // Use placeholder data if API fails
-        const placeholderData = [
-          { id: 1, name: "John Doe", image: "/placeholder.svg?key=cfqyy" },
-          { id: 2, name: "Jane Smith", image: "/placeholder.svg?key=j2s7m" },
-          { id: 3, name: "Mike Johnson", image: "/placeholder.svg?key=p9r4t" },
-          { id: 4, name: "Sarah Williams", image: "/placeholder.svg?key=5a1tv" },
-          { id: 5, name: "Robert Brown", image: "/placeholder.svg?key=k8paz" },
-          { id: 6, name: "Emily Davis", image: "/placeholder.svg?key=d3xrz" },
-        ]
-        setInmates(placeholderData)
-        resetGame(placeholderData)
-      } finally {
-        setLoading(false)
-      }
-    }
+  const {
+    shuffledMugshotImages,
+    shuffledCrimeDescriptions,
+    selectedMugshotId,
+    selectedDescriptionId,
+    matches,
+    results,
+    loading,
+    error,
+    submitting,
+    attemptCounts,
+    gameStartTimeRef,
+    setSelectedMugshotId,
+    setSelectedDescriptionId,
+    setResults,
+    setSubmitting,
+    resetGame,
+    getInmateDataById,
+    handleMatch,
+    handleCrimeClick,
+    retryFetch,
+    triggerHaptic,
+    // Mobile state and actions
+    isMobileCrimeModalOpen,
+    selectedMugshotForModal,
+    handleMugshotClickMobile,
+    handleMobileCrimeSelect,
+    closeMobileCrimeModal
+  } = gameLogic
 
-    fetchInmates()
-  }, [])
+  const {
+    currentPoints,
+    highScore,
+    resetPoints,
+    addPointsForMatches,
+    formatPoints
+  } = pointsSystem
 
-  // Initialize points system
-  useEffect(() => {
-    const initPoints = async () => {
-      try {
-        // Import dynamically to avoid SSR issues
-        const { createPointsManager } = await import('@/points')
-        
-        // Create points manager
-        const manager = await createPointsManager()
-        pointsManagerRef.current = manager
-        
-        // Update state with current points and high score
-        setCurrentPoints(manager.currentPoints)
-        setHighScore(manager.highScore)
-      } catch (error) {
-        console.error('Failed to initialize points system:', error)
-      }
-    }
-    
-    initPoints()
-    
-    // Cleanup on unmount
-    return () => {
-      if (pointsManagerRef.current) {
-        cleanupPointsSystem(pointsManagerRef.current).catch(console.error)
-      }
-    }
-  }, [])
-
-  // Effect to handle matching when both a mugshot and description are selected
-  useEffect(() => {
-    if (selectedMugshotId && selectedDescriptionId) {
-      // Track attempt count for this description
-      setAttemptCounts(prev => ({
-        ...prev,
-        [selectedDescriptionId]: (prev[selectedDescriptionId] || 0) + 1
-      }))
-
-      // Update the matches state
-      setMatches((prev) => {
-        const newMatches = { ...prev }
-        // Remove the mugshot if it was previously assigned to another description
-        Object.keys(newMatches).forEach(key => {
-          if (newMatches[key] === selectedMugshotId) {
-            newMatches[key] = null;
-          }
-        });
-        // Assign the selected mugshot to the selected description
-        newMatches[selectedDescriptionId] = selectedMugshotId
-        return newMatches
-      })
-
-      // Reset selections
-      setSelectedMugshotId(null)
-      setSelectedDescriptionId(null)
-    }
-  }, [selectedMugshotId, selectedDescriptionId]) // Dependency array
-
-  // Initialize score display after DOM is ready
-  useEffect(() => {
-    // Wait for DOM elements to be available
-    if (typeof document === 'undefined' || !pointsManagerRef.current) return
-    
-    // Small delay to ensure DOM is fully rendered
-    const timer = setTimeout(() => {
-      try {
-        const display = new ScoreDisplay(
-          '#current-score',
-          '#high-score',
-          '.game-container',
-          { animationDuration: 800 }
-        )
-        scoreDisplayRef.current = display
-        
-        // Update display
-        if (pointsManagerRef.current) {
-          display.updateScores(
-            pointsManagerRef.current.currentPoints,
-            pointsManagerRef.current.highScore
-          )
-        }
-      } catch (error) {
-        console.error('Failed to initialize score display:', error)
-      }
-    }, 100)
-    
-    return () => clearTimeout(timer)
-  }, [currentPoints, highScore]) // Re-run when points change
-
-  // Shuffle the mugshots and crimes
-  const resetGame = (data = inmates) => {
-    if (!data.length) return
-    
-    // Shuffle images and descriptions separately
-    const shuffledImages = [...data].sort(() => Math.random() - 0.5)
-    const shuffledDescriptions = [...data].sort(() => Math.random() - 0.5)
-
-    setShuffledCrimeDescriptions(shuffledDescriptions) // Set descriptions
-    setShuffledMugshotImages(shuffledImages) // Set images
-    setMatches({})
-    setResults(null)
-    setAttemptCounts({})
-    gameStartTimeRef.current = Date.now()
-    
-    // Reset points for current session
-    if (pointsManagerRef.current && scoreDisplayRef.current) {
-      handleGameReset(pointsManagerRef.current, scoreDisplayRef.current)
-    }
-  }
-
-  // Removed handleDragEnd function
-
-  // Submit and evaluate matches
+  // Handle submit with extracted logic
   const handleSubmit = () => {
-    // Check if all crime descriptions have been matched with a mugshot image
-    // Ensure all descriptions have a non-null match value
-    const allDescriptionsMatched = shuffledCrimeDescriptions.length === Object.values(matches).filter(v => v !== null).length;
-
+    const allDescriptionsMatched = shuffledCrimeDescriptions.length === Object.values(matches).filter(v => v !== null).length
 
     if (!allDescriptionsMatched) {
-      toast({
+      gameLogic.toast({
         title: "Incomplete Matches",
         description: "Please match all images before submitting.",
         variant: "destructive",
@@ -233,443 +82,232 @@ export default function MugshotMatchingGame() {
       return
     }
 
-    // Calculate score
-    const correctMatches = Object.entries(matches)
-      // Filter for entries where the description ID (key) matches the mugshot ID (value)
-      .filter(([descriptionId, matchedMugshotId]) => matchedMugshotId !== null && descriptionId === matchedMugshotId)
-      .map(([descriptionId]) => descriptionId) // Get the IDs of correctly matched descriptions
+    setSubmitting(true)
 
-    const score = correctMatches.length
-    const total = shuffledCrimeDescriptions.length // Use the count of descriptions as total
-    const percentage = total > 0 ? Math.round((score / total) * 100) : 0
-
-    // Calculate points
-    let totalPointsEarned = 0
-    
-    if (pointsManagerRef.current) {
-      // Calculate time elapsed since game start
-      const timeElapsed = Date.now() - gameStartTimeRef.current
-      // Process each correct match for points
-      correctMatches.forEach(descriptionId => {
-        const attemptCount = attemptCounts[descriptionId] || 1
-
-        // Create match result
-        const matchResult = createMatchResult(true, timeElapsed, attemptCount)
-        
-        // Add points
-        const pointsEarned = pointsManagerRef.current!.addPoints(matchResult)
-        totalPointsEarned += pointsEarned
+    setTimeout(() => {
+      const gameResults = submitGame({
+        matches,
+        shuffledCrimeDescriptions,
+        getInmateDataById,
+        attemptCounts,
+        gameStartTime: gameStartTimeRef.current,
+        addPointsForMatches,
+        toast: gameLogic.toast,
+        triggerHaptic,
+        formatPoints
       })
-      
-      // Update points display
-      if (scoreDisplayRef.current) {
-        scoreDisplayRef.current.updateScores(
-          pointsManagerRef.current.currentPoints,
-          pointsManagerRef.current.highScore
-        )
-        
-        // Animate points if earned
-        if (totalPointsEarned > 0) {
-          scoreDisplayRef.current.animatePoints(totalPointsEarned, true)
-        }
+
+      if (gameResults) {
+        setResults(gameResults)
       }
+      setSubmitting(false)
+    }, 300)
+  }
+
+  // Enhanced reset function that includes points reset
+  const handleReset = () => {
+    resetGame()
+    resetPoints()
+  }
+
+  // Handle crime click with mobile support
+  const handleCrimeClickWithMobile = (crime: Inmate) => {
+    handleCrimeClick(crime, isMobile)
+  }
+
+  // Handle mugshot click with mobile support
+  const handleMugshotClick = (mugshot: Inmate) => {
+    if (isMobile) {
+      handleMugshotClickMobile(mugshot)
+    } else {
+      triggerHaptic('light')
       
-      // Save state
-      pointsManagerRef.current.saveState().catch(error => {
-        console.warn('Failed to save points state:', error)
-      })
-      
-      // Update state
-      setCurrentPoints(pointsManagerRef.current.currentPoints)
-      setHighScore(pointsManagerRef.current.highScore)
+      if (selectedDescriptionId) {
+        handleMatch(mugshot.id.toString(), selectedDescriptionId)
+      } else {
+        setSelectedMugshotId(mugshot.id.toString())
+        setSelectedDescriptionId(null)
+      }
     }
-
-    setResults({
-      score,
-      total,
-      percentage,
-      submitted: true,
-      correctMatches: correctMatches.map(id => Number(id)), // Convert back to numbers if needed elsewhere, though string IDs are fine here
-      pointsEarned: totalPointsEarned
-    })
-
-    toast({
-      title: `Your Score: ${score}/${total}`,
-      description: `You got ${percentage}% correct! ${totalPointsEarned > 0 ? `+${formatPoints(totalPointsEarned)} points!` : ''}`,
-      variant: score === total && total > 0 ? "default" : "destructive",
-    })
   }
 
-  // Find the mugshot data (name, image, crime) by ID
-  const getInmateDataById = (id: string | number): Inmate | undefined => {
-    // Ensure comparison is done with string IDs if necessary, or convert id to number
-    const numericId = Number(id);
-    return inmates.find((inmate) => inmate.id === numericId);
-  }
-
-  // Function to handle showing mugshot details in modal
-  const handleMugshotInfo = (mugshot: Inmate, event: React.MouseEvent) => {
-    event.stopPropagation(); // Prevent triggering the selection
-    setSelectedMugshotForModal(mugshot);
-    setIsModalOpen(true);
-  };
-
-  // If loading, show a loading state
+  // If loading, show loading state
   if (loading) {
     return (
-      <div className="w-full max-w-4xl">
-        <Card className="p-6 shadow-lg bg-gray-800 border-gray-700 flex items-center justify-center">
-          <div className="text-center py-12">
-            <div className="animate-spin h-8 w-8 border-4 border-gray-600 border-t-blue-400 rounded-full mx-auto mb-4"></div>
-            <p className="text-lg text-gray-300">Loading mugshot data...</p>
-          </div>
-        </Card>
+      <div className="flex justify-center items-center min-h-screen p-6">
+        <GameSkeleton />
       </div>
     )
   }
 
-  // If error, show an error state
+  // If error, show error state
   if (error) {
     return (
-      <div className="w-full max-w-4xl">
-        <Card className="p-6 shadow-lg bg-gray-800 border-gray-700">
-          <div className="text-center py-8">
-            <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-red-400 mb-2">Error Loading Data</h2>
-            <p className="text-gray-300 mb-6">{error}</p>
-            <Button onClick={() => window.location.reload()} variant="outline" className="border-gray-600 text-gray-200 hover:bg-gray-700">
-              Try Again
-              <RefreshCw className="ml-2 h-5 w-5" />
-            </Button>
-          </div>
-        </Card>
+      <div className="flex justify-center items-center min-h-screen p-6">
+        <GameError error={error} onRetry={retryFetch} />
       </div>
     )
   }
 
-  // Selectable Mugshot Component (Renamed from DraggableMugshot)
-  function SelectableMugshot({ mugshot, index }: { mugshot: Inmate; index: number }) {
-    // Removed useDraggable hook and related variables/styles
-
-    // Check if this mugshot is already matched to a description
-    const isMatched = Object.values(matches).includes(mugshot.id.toString());
-    const isSelected = selectedMugshotId === mugshot.id.toString(); // Check if this mugshot is selected
-
+  // If results are available, show results view
+  if (results) {
     return (
-      <div
-        className="space-y-2 cursor-pointer" // Added cursor-pointer
-        onClick={() => setSelectedMugshotId(mugshot.id.toString())} // Added onClick handler
-      >
-        {/* Inmate image */}
-        <div
-          className={cn(
-            "relative rounded-lg overflow-hidden border-2 aspect-square transition-all duration-300 shadow-md hover:shadow-lg hover:scale-[1.02] transform card-hover-effect",
-            // Highlight if selected or matched
-            (isSelected || (isMatched && !results?.submitted))
-              ? "border-blue-500 ring-2 ring-blue-500/50"
-              : "border-gray-700 hover:border-gray-600",
-            // Removed isDragging style
-            results?.submitted && !isMatched ? "opacity-50" : "" // Dim if submitted and not matched correctly
-          )}
-        >
-          <img
-            src={mugshot.image || "/placeholder.svg"}
-            alt={`Mugshot ${index + 1}`}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              // Handle image loading errors - common source of mobile display issues
-              const target = e.target as HTMLImageElement;
-              if (target.src !== "/placeholder.svg") {
-                target.src = "/placeholder.svg";
-              }
-            }}
-          />
-          <div className="absolute top-2 left-2 bg-black/70 text-white px-2 py-1 rounded-md text-sm backdrop-blur-sm shadow-sm">
-            {mugshot.name}
-          </div>
-          
-          {/* Info button for modal */}
-          <button
-            onClick={(e) => handleMugshotInfo(mugshot, e)}
-            className="absolute top-2 right-2 bg-blue-600/80 hover:bg-blue-600 text-white p-1.5 rounded-md text-sm backdrop-blur-sm shadow-sm transition-colors"
-            title="View details"
-          >
-            <Info className="h-3 w-3" />
-          </button>
-
-          {results?.submitted && (
-            <div
-              className={cn(
-                "absolute bottom-0 inset-x-0 p-2 text-white text-center",
-                // Check if this image (mugshot.id) is correctly matched to its corresponding description
-                Object.entries(matches).some(
-                  ([descriptionId, matchedImageId]) =>
-                    matchedImageId === mugshot.id.toString() && descriptionId === mugshot.id.toString(),
-                )
-                  ? "bg-green-500/90 backdrop-blur-sm" // Correct match for this image
-                  : "bg-red-500/90 backdrop-blur-sm", // Incorrect or not matched to the right description
-              )}
-            >
-              {/* Check if this image is correctly matched */}
-              {Object.entries(matches).some(
-                ([descriptionId, matchedImageId]) =>
-                  matchedImageId === mugshot.id.toString() && descriptionId === mugshot.id.toString(),
-              ) ? (
-                <div className="flex items-center justify-center">
-                  <CheckCircle2 className="h-4 w-4 mr-1" />
-                  Correct!
-                </div>
-              ) : (
-                <div className="flex items-center justify-center text-xs">
-                  <XCircle className="h-4 w-4 mr-1" />
-                  {/* Show the correct crime for this mugshot */}
-                  {getInmateDataById(mugshot.id)?.crime || "Unknown"}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+      <GameResultsView
+        results={results}
+        shuffledMugshotImages={shuffledMugshotImages}
+        shuffledCrimeDescriptions={shuffledCrimeDescriptions}
+        matches={matches}
+        getInmateDataById={getInmateDataById}
+        onReset={handleReset}
+        currentPoints={currentPoints}
+        highScore={highScore}
+        formatPoints={formatPoints}
+        gameStartTime={gameStartTimeRef.current}
+      />
+    )
   }
 
-  // Selectable Crime Description Component (Renamed from DroppableCrimeDescription)
-  function SelectableDescription({ description }: { description: Inmate }) {
-    // Removed useDroppable hook and isOver variable
-
-    const matchedMugshotId = matches[description.id.toString()];
-    const matchedMugshotData = matchedMugshotId ? getInmateDataById(matchedMugshotId) : null;
-    const isSelected = selectedDescriptionId === description.id.toString(); // Check if this description is selected
-
-    return (
-      <div
-        // Removed setNodeRef
-        className={cn(
-          "p-5 rounded-lg border transition-all shadow-md crime-card min-h-[150px] flex flex-col justify-between cursor-pointer", // Added cursor-pointer
-          // Highlight based on selection or match result
-          isSelected
-            ? "border-blue-500 ring-2 ring-blue-500/50" // Highlight if selected
-            : results?.submitted && results.correctMatches.includes(description.id)
-              ? "border-green-500 bg-green-900/20" // Correctly matched description
-              : results?.submitted
-                ? "border-red-500 bg-red-900/20" // Incorrectly matched description
-                : "border-gray-700 hover:border-gray-600 bg-gradient-to-b from-gray-900/80 to-gray-800/50 hover:shadow-lg",
-          // Removed isOver and activeDragId styles
-        )}
-        onClick={() => setSelectedDescriptionId(description.id.toString())} // Added onClick handler
-      >
-        <div className="flex-grow">
-          {/* Display the crime description text */}
-          <div className="text-lg font-medium text-gray-200 break-words whitespace-normal leading-relaxed mb-4">
-            {description.crime || "Unknown crime"}
-          </div>
-        </div>
-
-        {/* Area to show the matched mugshot or placeholder */}
-        <div className="mt-auto pt-2 border-t border-gray-700/50 flex items-center justify-between min-h-[40px]">
-          {matchedMugshotData ? (
-            <div className="flex items-center gap-2 text-sm text-gray-300">
-              <img src={matchedMugshotData.image} alt={matchedMugshotData.name} className="h-8 w-8 rounded-full object-cover border border-gray-600"/>
-              <span>{matchedMugshotData.name}</span>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 italic">
-              {/* Updated placeholder text */}
-              {isSelected ? "Selected" : matchedMugshotData ? "" : "Click to select"}
-            </div>
-          )}
-
-          {/* Show check/cross based on the match for this description */}
-          {results?.submitted && (
-            matches[description.id.toString()] === description.id.toString() ? (
-              <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
-            ) : (
-              <XCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
-            )
-          )}
-        </div>
-      </div>
-    );
-  }
-
+  // Calculate total matches for progress
+  const totalMatches = Object.values(matches).filter(match => match !== null).length
+  const correctMatches = Object.entries(matches)
+    .filter(([descriptionId, matchedMugshotId]) => matchedMugshotId !== null && descriptionId === matchedMugshotId)
+    .length
 
   return (
-    // Removed DndContext wrapper
-    <div className="w-full max-w-4xl fade-in game-container">
-      <Card className="p-6 shadow-xl bg-gradient-to-b from-gray-800 to-gray-900 border-gray-700">
-        {/* Points display */}
-          <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center space-x-2">
-            <div className="bg-blue-900/50 px-3 py-1 rounded-md border border-blue-700/50">
-              <span className="text-sm text-gray-400">Points:</span>{" "}
-              <span id="current-score" className="font-bold text-blue-400">{formatPoints(currentPoints)}</span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="bg-amber-900/50 px-3 py-1 rounded-md border border-amber-700/50 flex items-center">
-              <Trophy className="h-4 w-4 text-amber-500 mr-1" />
-              <span className="text-sm text-gray-400">High Score:</span>{" "}
-              <span id="high-score" className="font-bold text-amber-400 ml-1">{formatPoints(highScore)}</span>
-            </div>
+    <div className="max-w-7xl mx-auto p-6">
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
+          Mugshot Matching Game
+        </h1>
+        <p className="text-lg text-gray-600 dark:text-gray-400 mb-6">
+          Match each suspect with their crime
+        </p>
+        
+        {/* Game Stats */}
+        <GameStats 
+          totalMatches={totalMatches}
+          correctMatches={correctMatches}
+          gameStartTime={gameStartTimeRef.current}
+          currentPoints={currentPoints}
+        />
+      </div>
+
+      {/* Progress */}
+      <div className="mb-8">
+        <GameProgress 
+          totalMatches={totalMatches} 
+          maxMatches={shuffledMugshotImages.length}
+        />
+      </div>
+
+      {/* Game Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-8 lg:items-start">
+        {/* Mugshots */}
+        <div className="space-y-6 h-full">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            Suspects
+            {selectedMugshotId && (
+              <Badge variant="secondary" className="ml-2">
+                Selected
+              </Badge>
+            )}
+          </h2>
+          <div className="grid grid-cols-2 gap-5 h-full content-start">
+             {shuffledMugshotImages.map((mugshot: Inmate, index: number) => (
+              <CleanMugshotCard
+                key={mugshot.id}
+                mugshot={mugshot}
+                index={index}
+                isSelected={selectedMugshotId === mugshot.id.toString()}
+                isMatched={!!matches[mugshot.id.toString()]}
+                onClick={() => handleMugshotClick(mugshot)}
+                results={results}
+                matches={matches}
+                getInmateDataById={getInmateDataById}
+              />
+            ))}
           </div>
         </div>
 
-        <div className="mb-6 text-center">
-          <p className="text-lg text-gray-300">Match each criminal with their crime</p>
-        </div>
-
-        {/* Game board */}
-        <div className="space-y-8">
-          {/* Inmate images section at the top */}
-          {/* Mugshots Section (Selectable Items) */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-200 mb-4">Mugshots (Click one)</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 gap-5">
-              {shuffledMugshotImages.map((mugshot, index) => (
-                <SelectableMugshot key={mugshot.id} mugshot={mugshot} index={index} />
-              ))}
-              {/* Removed extra closing braces */}
-            </div>
-          </div>
-
-          {/* Crime Descriptions Section (Selectable Areas) */}
-          <div>
-            <h2 className="text-xl font-semibold text-gray-200 mb-4">Crime Descriptions (Click one)</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-              {shuffledCrimeDescriptions.map((description) => (
-                <SelectableDescription key={description.id} description={description} />
-              ))}
-              {/* Removed extra closing braces */}
-            </div>
-          </div>
-        </div>
-
-        {/* Results section */}
-        {results?.submitted && (
-          <div className="mt-8 p-6 bg-gradient-to-b from-gray-900/70 to-gray-800/50 rounded-lg border border-gray-700 shadow-lg">
-            <h2 className="text-xl font-semibold text-center mb-2 text-gray-200">Results</h2>
-            <div className="flex justify-center items-center gap-4 flex-wrap">
-              <div className="text-center">
-                <p className="text-3xl font-bold text-gray-100">
-                  {results.score}/{results.total}
-                </p>
-                <p className="text-sm text-gray-400">Correct Matches</p>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-gray-100">{results.percentage}%</p>
-                <p className="text-sm text-gray-400">Accuracy</p>
-              </div>
-              {results.pointsEarned > 0 && (
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-blue-400">+{results.pointsEarned}</p>
-                  <p className="text-sm text-gray-400">Points Earned</p>
-                </div>
+        {/* Crimes - Hide on mobile since we use modal */}
+        {!isMobile && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              Crimes
+              {selectedDescriptionId && (
+                <Badge variant="secondary" className="ml-2">
+                  Selected
+                </Badge>
               )}
-            </div>
-            
-            <div className="mt-4 text-center">
-              <p className="text-gray-300">
-                Total Score: <span className="font-bold text-blue-400">{formatPoints(currentPoints)}</span>
-              </p>
-              {currentPoints >= highScore && currentPoints > 0 && (
-                <p className="text-amber-400 mt-1 flex items-center justify-center">
-                  <Trophy className="h-4 w-4 mr-1" />
-                  New High Score!
-                </p>
-              )}
+            </h2>
+            <div className="space-y-4">
+              {shuffledCrimeDescriptions.map((crime: Inmate, index: number) => {
+                const matchedMugshotId = Object.keys(matches).find(key => matches[key] === crime.id.toString())
+                const matchedMugshot = matchedMugshotId ? (getInmateDataById(matchedMugshotId) || null) : null
+
+                return (
+                  <CleanCrimeCard
+                    key={crime.id}
+                    crime={crime}
+                    index={index}
+                    isSelected={selectedDescriptionId === crime.id.toString()}
+                    isMatched={!!matchedMugshot}
+                    matchedMugshot={matchedMugshot}
+                    onClick={() => handleCrimeClickWithMobile(crime)}
+                    results={results}
+                  />
+                )
+              })}
             </div>
           </div>
         )}
+      </div>
 
-        {/* Action buttons */}
-        <div className="mt-10 flex justify-center gap-4">
-          {!results?.submitted ? (
-            <Button
-              onClick={handleSubmit}
-              className="px-10 py-6 bg-blue-600 hover:bg-blue-700 text-white border-none shadow-lg hover:shadow-blue-500/20 transition-all duration-300 hover:scale-[1.02] transform submit-button glow-effect"
-              size="lg"
-            >
-              Submit Answers
-              <ArrowRightLeft className="ml-2 h-5 w-5" />
-            </Button>
-          ) : (
-            <Button
-              onClick={() => resetGame()}
-              className="px-10 py-6 border-gray-600 text-gray-200 hover:bg-gray-700 shadow-lg hover:shadow-gray-500/10 transition-all duration-300 hover:scale-[1.02] transform submit-button"
-              size="lg"
-              variant="outline"
-            >
-              Play Again
-              <RefreshCw className="ml-2 h-5 w-5" />
-            </Button>
-          )}
-        </div>
-      </Card>
+      {/* Controls */}
+      <CleanGameControls
+        onSubmit={handleSubmit}
+        onReset={handleReset}
+        canSubmit={totalMatches === shuffledMugshotImages.length}
+        isSubmitting={submitting}
+        matchCount={totalMatches}
+        totalMatches={shuffledMugshotImages.length}
+        className="mb-6"
+      />
 
-      {/* Mugshot Details Modal */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md w-full mx-4 bg-gray-800 border-gray-700">
-          <DialogHeader>
-            <DialogTitle className="text-gray-200">
-              {selectedMugshotForModal?.name || "Inmate Details"}
-            </DialogTitle>
-            <DialogDescription className="text-gray-400">
-              Detailed information about this mugshot
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedMugshotForModal && (
-            <div className="space-y-4">
-              {/* Mobile-optimized image display */}
-              <div className="flex justify-center">
-                <div className="relative w-48 h-48 rounded-lg overflow-hidden border-2 border-gray-600">
-                  <img
-                    src={selectedMugshotForModal.image || "/placeholder.svg"}
-                    alt={selectedMugshotForModal.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      // Handle image loading errors in modal - key for mobile debugging
-                      const target = e.target as HTMLImageElement;
-                      if (target.src !== "/placeholder.svg") {
-                        console.warn(`Failed to load image: ${selectedMugshotForModal.image}`);
-                        target.src = "/placeholder.svg";
-                      }
-                    }}
-                    style={{
-                      // Ensure proper image rendering on mobile
-                      maxWidth: '100%',
-                      height: 'auto',
-                      objectFit: 'cover'
-                    }}
-                  />
-                </div>
-              </div>
-              
-              {/* Inmate Details */}
-              <div className="space-y-3">
-                <div>
-                  <h4 className="font-semibold text-gray-200 mb-1">Name</h4>
-                  <p className="text-gray-300">{selectedMugshotForModal.name}</p>
-                </div>
-                
-                <div>
-                  <h4 className="font-semibold text-gray-200 mb-1">Crime Description</h4>
-                  <p className="text-gray-300 text-sm leading-relaxed">
-                    {selectedMugshotForModal.crime || "No crime description available"}
-                  </p>
-                </div>
-                
-                {/* Debug info for troubleshooting mobile issues */}
-                <div className="text-xs text-gray-500 border-t border-gray-700 pt-2">
-                  <p>Image URL: {selectedMugshotForModal.image ? "Available" : "Missing"}</p>
-                  <p>ID: {selectedMugshotForModal.id}</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Instructions */}
+      <AnimatePresence>
+        {!results && totalMatches === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="text-center text-gray-600 dark:text-gray-400 mt-8"
+          >
+            <p className="flex items-center justify-center gap-2">
+              {isMobile ? (
+                "Tap a suspect to select their crime"
+              ) : (
+                <>
+                  Click a suspect, then click the matching crime
+                  <ArrowRightLeft className="h-4 w-4" />
+                </>
+              )}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Crime Selection Modal */}
+      <MobileCrimeModal
+        isOpen={isMobileCrimeModalOpen}
+        onClose={closeMobileCrimeModal}
+        crimes={shuffledCrimeDescriptions}
+        onCrimeSelect={handleMobileCrimeSelect}
+        selectedMugshot={selectedMugshotForModal || undefined}
+        matches={matches}
+        getInmateDataById={getInmateDataById}
+      />
     </div>
-    // Removed closing DndContext tag
   )
 }
